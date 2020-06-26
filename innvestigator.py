@@ -4,6 +4,9 @@ import numpy as np
 from inverter_util import RelevancePropagator
 from utils import pprint, Flatten
 
+import sys
+sys.path.insert(0,"/analysis/fabiane/phd/patch_individual_filters/")
+import pif
 
 class InnvestigateModel(torch.nn.Module):
     """
@@ -90,6 +93,11 @@ class InnvestigateModel(torch.nn.Module):
         """
         for mod in parent_module.children():
             if list(mod.children()):
+                if isinstance(mod, pif.PatchIndividualFilters3D):
+                    mod.register_forward_hook(
+                        self.inverter.get_layer_fwd_hook(mod))
+                    mod.register_backward_hook(
+                        self.pif_hook_function)
                 self.register_hooks(mod)
                 continue
             mod.register_forward_hook(
@@ -98,13 +106,21 @@ class InnvestigateModel(torch.nn.Module):
                 mod.register_backward_hook(
                     self.relu_hook_function
                 )
-
+            
+            
     @staticmethod
     def relu_hook_function(module, grad_in, grad_out):
         """
         If there is a negative gradient, change it to zero.
         """
         return (torch.clamp(grad_in[0], min=0.0),)
+    
+    def pif_hook_function(module, grad_in, grad_out):
+        """
+        PIF layers need to split/reassemble inputs
+        """
+        splits, bs = module.split_5d_channel_last(self, grad_in, module.num_patches_per_dim)
+        return splits
 
     def __call__(self, in_tensor):
         """
@@ -192,7 +208,15 @@ class InnvestigateModel(torch.nn.Module):
                 only_max_score[max_v == self.prediction] = self.prediction[max_v == self.prediction]
                 relevance_tensor = only_max_score.view(org_shape)
                 self.prediction.view(org_shape)
-
+            elif isinstance(rel_for_class, list) or isinstance(rel_for_class, tuple):
+                # In case of multi dimensional specification do not
+                # flatten the output right away.
+                org_shape = self.prediction.size()
+                #only_max_score = torch.zeros_like(self.prediction).to(self.device)
+                only_max_score = torch.zeros_like(self.prediction).to(self.device)
+                only_max_score[rel_for_class] += self.prediction[rel_for_class]
+                relevance_tensor = only_max_score.view(org_shape)
+                self.prediction.view(org_shape)
             else:
                 org_shape = self.prediction.size()
                 self.prediction = self.prediction.view(org_shape[0], -1)
@@ -205,6 +229,16 @@ class InnvestigateModel(torch.nn.Module):
             # The module list is computed for every forward pass
             # by the model inverter.
             rev_model = self.inverter.module_list[::-1]
+            # remove the internal PIF layers, as they are investigated 
+            #rev_model = np.concatenate((rev_model[:5],rev_model[41:]))
+            for idx, s in enumerate(rev_model):
+                if isinstance(s, pif.PatchIndividualFilters3D):
+                    num_children = len(list(s.children()))
+                    rev_model = np.concatenate((
+                        rev_model[:idx+1],
+                        rev_model[idx+1+num_children:]
+                        ))
+           
             relevance = relevance_tensor.detach()
             del relevance_tensor
             # List to save relevance distributions per layer

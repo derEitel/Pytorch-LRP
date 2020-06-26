@@ -3,6 +3,9 @@ import numpy as np
 import torch.nn.functional as F
 from utils import pprint, Flatten
 
+import sys
+sys.path.insert(0,"/analysis/fabiane/phd/patch_individual_filters/")
+import pif
 
 def module_tracker(fwd_hook_func):
     """
@@ -40,7 +43,8 @@ class RelevancePropagator:
                            torch.nn.Dropout3d,
                            torch.nn.Softmax,
                            torch.nn.LogSoftmax,
-                           torch.nn.Sigmoid)
+                           torch.nn.Sigmoid,
+                           torch.nn.Sequential)
     # Implemented rules for relevance propagation.
     available_methods = ["e-rule", "b-rule"]
 
@@ -85,7 +89,6 @@ class RelevancePropagator:
             The
 
         """
-
         if isinstance(layer,
                       (torch.nn.MaxPool1d, torch.nn.MaxPool2d, torch.nn.MaxPool3d)):
             return self.max_pool_nd_inverse(layer, relevance).detach()
@@ -107,6 +110,11 @@ class RelevancePropagator:
                     pprint("WARNING: LogSoftmax layer was "
                            "turned into probabilities.")
                     self.warned_log_softmax = True
+            return relevance
+        elif isinstance(layer, pif.PatchIndividualFilters3D):
+            return self.pif_inverse(layer, relevance).detach()
+        elif isinstance(layer, torch.nn.Sequential):
+            #relevance = relevance.view(1, 6, 48, 3, 3, 3)
             return relevance
         elif isinstance(layer, self.allowed_pass_layers):
             # The above layers are one-to-one mappings of input to
@@ -144,6 +152,9 @@ class RelevancePropagator:
         if isinstance(layer,
                       (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d)):
             return self.conv_nd_fwd_hook
+        
+        if isinstance(layer, pif.PatchIndividualFilters3D):
+            return self.pif_fwd_hook
 
         if isinstance(layer, self.allowed_pass_layers):
             return self.silent_pass  # No hook needed.
@@ -379,7 +390,7 @@ class RelevancePropagator:
 
         # In case the output had been reshaped for a linear layer,
         # make sure the relevance is put into the same shape as before.
-        relevance_in = relevance_in.view(m.out_shape)
+        #relevance_in = relevance_in.view(m.out_shape)
 
         # Get required values from layer
         inv_conv_nd = self.get_inv_conv_method(m)
@@ -476,6 +487,8 @@ class RelevancePropagator:
                 spatial_dims = [1] * len(relevance_in.size()[2:])
 
                 input_relevance = relevance_in.repeat(1, 4, *spatial_dims)
+                #norm = norm.cpu()
+                #input_relevance = input_relevance.cpu()
                 input_relevance[:, :2*out_c] *= (1+self.beta)/norm[:, :out_c].repeat(1, 2, *spatial_dims)
                 input_relevance[:, 2*out_c:] *= -self.beta/norm[:, out_c:].repeat(1, 2, *spatial_dims)
                 # Each of the positive / negative entries needs its own
@@ -513,4 +526,57 @@ class RelevancePropagator:
 
         setattr(m, "in_tensor", in_tensor[0])
         setattr(m, 'out_shape', list(out_tensor.size()))
+        return    
+
+    def pif_inverse(self, m, relevance_in):
+        
+        # reshape the input from flattened to spatial
+        relevance_in = relevance_in.view(tuple(np.concatenate(((
+                            m.in_tensor.shape[0],
+                            m.num_local_filter_out,
+                            m.num_patches + m.num_overlap_patches),
+                            m.filter_shape))
+                            ))
+        # determine output size
+        relevance_out = torch.zeros(size=tuple(np.concatenate(((
+                            1, m.in_tensor.shape[1],
+                            len(list(m.children()))),
+                            m.patch_shape))
+                            )).to(self.device)
+        # backward through inner layers
+        for idx, child in enumerate(m.children()):
+            relevance_out[:,:,idx] = self.conv_nd_inverse(child,
+                                relevance_in[:,:,idx]
+                                ).detach()
+        # reassemble the patches
+        if m.overlap:
+            rev_out = relevance_out.clone()
+            r = m.reassemble(rev_out[:,:,:np.prod(m.num_patches_per_dim)],
+                                1, m.num_patches_per_dim)
+            r_ov = m.reassemble(rev_out[:,:,np.prod(m.num_patches_per_dim):],
+                                1, m.num_overlap_patches_per_dim)
+            relevance_out = m.average_overlapped_output(r, r_ov)
+        else:
+            relevance_out = m.reassemble(relevance_out, 1, m.num_patches_per_dim)
+
+        # if PIF used padding, crop it here
+        if relevance_out.shape != m.input_dim:
+            # three dimensional
+            if len(m.input_dim) == 3:
+                relevance_out = relevance_out[:, :, :m.input_dim[0],
+                        :m.input_dim[1], :m.input_dim[2]]
+            # two dimensional
+            else:
+                relevance_out = relevance_out[:, :, :m.input_dim[0],
+                        :m.input_dim[1]]
+
+        return relevance_out
+
+    @module_tracker
+    def pif_fwd_hook(self, m, in_tensor: torch.Tensor,
+                     out_tensor: torch.Tensor):
+
+        setattr(m, "in_tensor", in_tensor[0])
+        setattr(m, 'out_shape', list(out_tensor.size()))
         return
+
