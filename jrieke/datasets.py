@@ -13,7 +13,10 @@ from torch.utils.data import Dataset, DataLoader
 from tabulate import tabulate
 
 # Binary brain mask used to cut out the skull.
-mask = utils.load_nifti(settings["binary_brain_mask"])
+try:
+    mask = utils.load_nifti(settings["binary_brain_mask"])
+except FileNotFoundError:
+    mask = None
 
 # ------------------------- ADNI data tables -----------------------------------
 
