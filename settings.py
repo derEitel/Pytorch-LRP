@@ -36,13 +36,13 @@ Arguments:
 """
 
 settings = {
-    "model_path": "/analysis/ritter/projects/Methods/LRP/models_pytorch/rieke_copy1_OHE/repeat_0_cv_fold_0_BEST_ITERATION.h5", 
-    "data_path": "/analysis/ritter/projects/Methods/LRP/data/rieke-copy1/2Node_trial0/beta0/",
-    "ADNI_DIR": "/analysis/ritter/data/ADNI/ADNI_2Yr/",
-    "train_h5": "/analysis/ritter/data/ADNI_HDF5/Splits_Eitel/train_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
-    "val_h5": "/analysis/ritter/data/ADNI_HDF5/Splits_Eitel/val_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
-    "holdout_h5": "/analysis/ritter/data/ADNI_HDF5/Splits_Eitel/holdout_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
+    "model_path": "/ritter/share/projects/Methods/LRP/models_pytorch/rieke_copy1_OHE/repeat_0_cv_fold_0_BEST_ITERATION.h5", 
+    "data_path": "/ritter/share/projects/Methods/LRP/data/rieke-copy1/2Node_trial0/beta0/",
+    "ADNI_DIR": "/ritter/share/data/ADNI/ADNI_2Yr/",
+    "train_h5": "/ritter/share/data/ADNI_HDF5/Splits_Eitel/train_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
+    "val_h5": "/ritter/share/data/ADNI_HDF5/Splits_Eitel/val_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
+    "holdout_h5": "/ritter/share/data/ADNI_HDF5/Splits_Eitel/holdout_AD_CN_2Yr15T_plus_UniqueScreening_quickprep_(193, 229, 193)_reducedValSize.h5",
     "binary_brain_mask": "binary_brain_mask.nii.gz",
-    "nmm_mask_path": "/analysis/ritter/misc/masks/Neuromorphometrics/tpm/labels_Neuromorphometrics.nii",
+    "nmm_mask_path": "/ritter/share/misc/masks/Neuromorphometrics/tpm/labels_Neuromorphometrics.nii",
     "nmm_mask_path_scaled": "nmm_mask_rescaled.nii"
 }
